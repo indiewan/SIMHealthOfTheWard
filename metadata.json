@@ -1,0 +1,6 @@
+{
+  "name": "Simulated Health of the Ward - WardView",
+  "description": "A high-fidelity simulation electronic whiteboard for NHS ward view training, featuring multi-page bed navigation, custom clinical symbols, and protected edit/view modes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
