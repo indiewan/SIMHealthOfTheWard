@@ -704,6 +704,27 @@ export const PatientTable: React.FC<PatientTableProps> = ({
               </tr>
             );
           })}
+
+          {/* Empty state when page has no beds configured */}
+          {patients.length === 0 && (
+            <tr className="bg-slate-50 border-b border-slate-300">
+              <td
+                colSpan={isEditMode ? 24 : 23}
+                className="py-16 px-4 text-center text-slate-500 font-sans"
+              >
+                <div className="flex flex-col items-center justify-center gap-1.5">
+                  <div className="text-sm font-bold text-slate-700">
+                    No bed spaces configured on Page {currentPage}
+                  </div>
+                  <div className="text-xs text-slate-500 max-w-md">
+                    {isEditMode
+                      ? `Click "+ Add Bed Space" in the top bar toolbar to add beds to Page ${currentPage}.`
+                      : 'This page currently has no active beds in use and is skipped during auto-page rotation.'}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

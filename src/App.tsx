@@ -8,19 +8,33 @@ import { HelpLegendModal } from './components/HelpLegendModal';
 import { EditPatientModal } from './components/EditPatientModal';
 import { Check, Info, Lock } from 'lucide-react';
 
-const STORAGE_KEY = 'hotw_simulation_patients_v1';
+const STORAGE_KEY = 'hotw_simulation_patients_v2';
 const STORAGE_HOSPITAL_KEY = 'hotw_simulation_hospital';
 const STORAGE_WARD_KEY = 'hotw_simulation_ward';
 
 export default function App() {
-  // Load patients from localStorage or default simulation dataset
+  // Load patients from localStorage or default simulation dataset with v1 migration
   const [patients, setPatients] = useState<PatientRecord[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      const savedV2 = localStorage.getItem('hotw_simulation_patients_v2');
+      if (savedV2) {
+        const parsed = JSON.parse(savedV2);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
+        }
+      }
+
+      // Migration from v1: prune old dummy page 3 and 4 defaults so only page 1 and 2 are active
+      const savedV1 = localStorage.getItem('hotw_simulation_patients_v1');
+      if (savedV1) {
+        const parsed = JSON.parse(savedV1);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const onlyPage1and2 = parsed.filter(
+            (p: PatientRecord) => p.page === 1 || p.page === 2
+          );
+          if (onlyPage1and2.length > 0) {
+            return onlyPage1and2;
+          }
         }
       }
     } catch (e) {
@@ -30,6 +44,8 @@ export default function App() {
   });
 
   const [currentPage, setCurrentPage] = useState<1 | 2 | 3 | 4>(1);
+  const [countdown, setCountdown] = useState<number>(59);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState<boolean>(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState<boolean>(false);
@@ -55,13 +71,62 @@ export default function App() {
     }, 3500);
   }, []);
 
+  // Compute active pages that have beds in use
+  const activePages = useMemo<(1 | 2 | 3 | 4)[]>(() => {
+    const pages: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
+    const inUse = pages.filter((pageNum) =>
+      patients.some(
+        (p) => p.page === pageNum && (!p.isClosedBed || (p.surname && p.surname.trim() !== ''))
+      )
+    );
+    return inUse.length > 0 ? inUse : [1];
+  }, [patients]);
+
+  // 60-second auto-switch countdown timer
+  useEffect(() => {
+    if (!isTimerRunning) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isTimerRunning]);
+
+  // When countdown runs out (hits 0), automatically switch to next active page and reset timer
+  useEffect(() => {
+    if (countdown === 0) {
+      setCurrentPage((curr) => {
+        if (activePages.length <= 1) return curr;
+        const currentIndex = activePages.indexOf(curr);
+        if (currentIndex === -1 || currentIndex === activePages.length - 1) {
+          return activePages[0];
+        }
+        return activePages[currentIndex + 1];
+      });
+      setCountdown(59);
+    }
+  }, [countdown, activePages]);
+
+  const handlePageChange = useCallback((page: 1 | 2 | 3 | 4) => {
+    setCurrentPage(page);
+    setCountdown(59); // Reset countdown for newly selected page
+  }, []);
+
+  const handleToggleTimer = useCallback(() => {
+    setIsTimerRunning((prev) => !prev);
+  }, []);
+
   const handleManualRefresh = useCallback(() => {
+    setCountdown(59);
     showToast('Refreshed Health of the Ward board data');
   }, [showToast]);
 
   const handleLockEditMode = useCallback(() => {
     setIsEditMode(false);
-    showToast('Board locked: View Only Mode active');
+    setIsTimerRunning(true);
+    setCountdown(59);
+    showToast('Board locked: View Only Mode active (auto-rotation resumed)');
   }, [showToast]);
 
   const handleOpenPasswordModal = useCallback(() => {
@@ -246,7 +311,11 @@ export default function App() {
       {/* Top Navigation & Hospital Whiteboard Bar */}
       <TopBar
         currentPage={currentPage}
-        onPageChange={setCurrentPage}
+        onPageChange={handlePageChange}
+        activePages={activePages}
+        countdown={countdown}
+        isTimerRunning={isTimerRunning}
+        onToggleTimer={handleToggleTimer}
         isEditMode={isEditMode}
         onOpenPasswordModal={handleOpenPasswordModal}
         onLockEditMode={handleLockEditMode}
@@ -271,15 +340,34 @@ export default function App() {
       <main className="flex-1 w-full p-2 md:p-3 max-w-[1920px] mx-auto overflow-hidden flex flex-col">
         {/* Active Page Context Bar */}
         <div className="mb-2 flex items-center justify-between text-xs text-sky-100 font-medium px-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-white tracking-wide uppercase">
               {hospital} — {ward}
             </span>
             <span>•</span>
-            <span>Viewing Page {currentPage} of 4</span>
+            <span>
+              Page {currentPage} of 4
+              {activePages.length < 4 && (
+                <span className="text-sky-300 ml-1">
+                  ({activePages.length} active in rotation: Pages {activePages.join(', ')})
+                </span>
+              )}
+            </span>
             <span>•</span>
             <span className="text-sky-200">
               {filteredPatients.length} bed space{filteredPatients.length !== 1 ? 's' : ''} on this page
+            </span>
+            <span>•</span>
+            <span className="text-sky-300 font-mono text-[11px]">
+              {isTimerRunning
+                ? `Auto-switch to Page ${
+                    activePages.length > 1
+                      ? activePages[
+                          (activePages.indexOf(currentPage) + 1) % activePages.length
+                        ]
+                      : currentPage
+                  } in ${countdown}s`
+                : 'Auto-rotation paused'}
             </span>
             <span>•</span>
             <span className="bg-amber-400/20 border border-amber-300/40 text-amber-200 px-2 py-0.5 rounded text-[10.5px] font-bold tracking-wide">
@@ -319,7 +407,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <span>UHD NHS Health of the Ward (Wardview) Simulation Environment</span>
             <span>•</span>
-            <span>30 Patient Cohort Scenario</span>
+            <span>2-Page Active Cohort (Skips Unused Pages)</span>
           </div>
           <div>
             Password for Edit Mode: <strong className="text-white font-mono">Admin</strong>
@@ -333,7 +421,8 @@ export default function App() {
         onClose={() => setIsPasswordModalOpen(false)}
         onSuccess={() => {
           setIsEditMode(true);
-          showToast('Unlocked Edit Mode! You can now edit patient names, consultants, and clinical symbols.');
+          setIsTimerRunning(false);
+          showToast('Unlocked Edit Mode! Auto-rotation paused during editing.');
         }}
       />
 

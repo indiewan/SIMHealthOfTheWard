@@ -20,6 +20,10 @@ import {
 interface TopBarProps {
   currentPage: 1 | 2 | 3 | 4;
   onPageChange: (page: 1 | 2 | 3 | 4) => void;
+  activePages: (1 | 2 | 3 | 4)[];
+  countdown: number;
+  isTimerRunning: boolean;
+  onToggleTimer: () => void;
   isEditMode: boolean;
   onOpenPasswordModal: () => void;
   onLockEditMode: () => void;
@@ -43,6 +47,10 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   currentPage,
   onPageChange,
+  activePages,
+  countdown,
+  isTimerRunning,
+  onToggleTimer,
   isEditMode,
   onOpenPasswordModal,
   onLockEditMode,
@@ -62,18 +70,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onImportScenario,
   onManualRefresh,
 }) => {
-  // 60-second auto-refresh countdown simulation
-  const [countdown, setCountdown] = useState(59);
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [showConsultantDropdown, setShowConsultantDropdown] = useState(false);
-
-  useEffect(() => {
-    if (!isTimerRunning) return;
-    const interval = setInterval(() => {
-      setCountdown((prev) => (prev <= 1 ? 60 : prev - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isTimerRunning]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -199,32 +196,54 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="flex items-center gap-1.5">
             {([1, 2, 3, 4] as const).map((pageNum) => {
               const isActive = currentPage === pageNum;
+              const inUse = activePages.includes(pageNum);
               return (
                 <button
                   key={pageNum}
                   type="button"
                   onClick={() => onPageChange(pageNum)}
-                  className={`px-3.5 py-1 text-xs font-bold rounded transition-all cursor-pointer border ${
+                  className={`px-3 py-1 text-xs font-bold rounded transition-all cursor-pointer border ${
                     isActive
                       ? 'bg-white text-[#02476b] border-white shadow-md'
-                      : 'bg-[#02476b] hover:bg-[#035985] text-white border-white'
+                      : inUse
+                      ? 'bg-[#02476b] hover:bg-[#035985] text-white border-white'
+                      : 'bg-[#02476b]/50 hover:bg-[#02476b] text-white/60 hover:text-white border-white/30'
                   }`}
+                  title={
+                    inUse
+                      ? `Page ${pageNum} (Beds in use)`
+                      : `Page ${pageNum} (Empty - skipped during auto-rotation)`
+                  }
                 >
                   Page {pageNum}
+                  {!inUse && (
+                    <span className="ml-1 text-[9px] font-normal text-white/50">
+                      (empty)
+                    </span>
+                  )}
                 </button>
               );
             })}
 
             {/* Simulated Live Countdown Display */}
-            <div className="ml-2 flex items-center gap-1 bg-[#013550] border border-white/50 px-2 py-0.5 rounded text-white shadow-xs">
+            <div
+              className={`ml-2 flex items-center gap-1.5 px-2 py-0.5 rounded text-white shadow-xs border transition-colors ${
+                isTimerRunning ? 'bg-[#013550] border-white/50' : 'bg-amber-950/70 border-amber-400/50 text-amber-200'
+              }`}
+              title={
+                isTimerRunning
+                  ? `Auto-rotation active: switching to next active page in ${countdown}s`
+                  : 'Auto-rotation paused'
+              }
+            >
               <span className="font-mono text-xs font-black tabular-nums tracking-tight">
                 {String(countdown).padStart(2, '0')}
               </span>
               <button
                 type="button"
-                onClick={() => setIsTimerRunning(!isTimerRunning)}
+                onClick={onToggleTimer}
                 className="text-white hover:text-sky-300 p-0.5 transition-colors cursor-pointer"
-                title={isTimerRunning ? 'Pause countdown' : 'Resume countdown'}
+                title={isTimerRunning ? 'Pause auto-page rotation' : 'Resume auto-page rotation'}
               >
                 {isTimerRunning ? (
                   <Pause className="w-3.5 h-3.5" />
